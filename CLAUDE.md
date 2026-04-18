@@ -68,6 +68,11 @@ python plate_detector.py data/images/traffic1/traffic1_frame_0000.jpg
 # OCR on captured plate image
 python plate_ocr.py output/captured/plate_15_00080.jpg
 
+# Database operations
+python traffic_database.py --query      # Query recent crossings
+python traffic_database.py --stats   # Show statistics
+python traffic_database.py --export database/crossings.csv  # Export to CSV
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
