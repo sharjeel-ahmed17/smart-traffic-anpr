@@ -65,6 +65,9 @@ python anpr_pipeline.py data/videos/traffic1.mp4 --p1 384 0 --p2 384 432
 # Standalone plate detection
 python plate_detector.py data/images/traffic1/traffic1_frame_0000.jpg
 
+# OCR on captured plate image
+python plate_ocr.py output/captured/plate_15_00080.jpg
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
