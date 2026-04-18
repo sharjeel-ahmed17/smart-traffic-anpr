@@ -38,7 +38,11 @@ def load_database():
     except:
         db_path = DB_PATH
     import sys
-    sys.path.insert(0, "..")
+    import os
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(app_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
     from traffic_database import TrafficDatabase
     return TrafficDatabase(db_path)
 
@@ -50,6 +54,13 @@ def get_stats() -> Dict[str, Any]:
         db_path = st.session_state.get('db_path', DB_PATH)
     except:
         db_path = DB_PATH
+    import sys
+    import os
+    # Add parent directory to path
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(app_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
     from traffic_database import TrafficDatabase
     db = TrafficDatabase(db_path)
     stats = db.get_stats()
