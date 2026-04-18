@@ -86,10 +86,13 @@ def main():
     refresh = st.sidebar.slider("Auto-refresh (seconds)", 1, 60, 5)
     st.session_state.refresh_interval = refresh
 
-    # Auto-refresh
+    # Auto-refresh (use Streamlit components if available)
     if refresh > 0:
         st.sidebar.markdown(f"🔄 Auto-refresh every {refresh}s")
-        st.autorefresh(refresh * 1000)
+        try:
+            st.autorefresh(refresh * 1000)
+        except AttributeError:
+            st.sidebar.warning("Enable browser auto-refresh for live updates")
 
     # ============== MAIN CONTENT ==============
 
@@ -348,11 +351,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # Add autorefresh support
-    try:
-        from streamlit_autorefresh import st_autorefresh
-        st_autorefresh(interval=5000, key="refresh")
-    except ImportError:
-        pass
-
+    # Note: Auto-refresh is handled in the sidebar settings
+    # Use browser refresh or Streamlit's native rerun feature
     main()
