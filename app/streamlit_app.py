@@ -6,7 +6,7 @@ Displays: Live vehicle counts, License plate logs, Traffic analytics, Historical
 import streamlit as st
 import pandas as pd
 import os
-import cv2
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
@@ -31,52 +31,157 @@ def init_session_state():
         st.session_state.refresh_interval = 5
 
 
-def load_database():
-    """Load database module."""
-    try:
-        db_path = st.session_state.get('db_path', DB_PATH)
-    except:
-        db_path = DB_PATH
-    import sys
-    import os
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(app_dir)
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    from traffic_database import TrafficDatabase
-    return TrafficDatabase(db_path)
+# ============ Database Functions (embedded) ============
+
+def get_db_connection(db_path):
+    """Get database connection."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_crossings_db(db_path, start_time=None, end_time=None, vehicle_type=None, license_plate=None, limit=1000):
+    """Query crossing records."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM crossings WHERE 1=1"
+    params = []
+
+    if start_time:
+        query += " AND timestamp >= ?"
+        params.append(start_time)
+    if end_time:
+        query += " AND timestamp <= ?"
+        params.append(end_time)
+    if vehicle_type:
+        query += " AND vehicle_type = ?"
+        params.append(vehicle_type)
+    if license_plate:
+        query += " AND license_plate = ?"
+        params.append(license_plate)
+
+    query += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
+
+    cursor.execute(query, params)
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def get_stats_db(db_path) -> Dict[str, Any]:
+    """Get statistics from database."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+
+    # Total
+    cursor.execute("SELECT COUNT(*) FROM crossings")
+    total = cursor.fetchone()[0]
+
+    # Unique plates
+    cursor.execute("""
+        SELECT COUNT(DISTINCT license_plate) FROM crossings
+        WHERE license_plate IS NOT NULL AND license_plate != ''
+    """)
+    unique = cursor.fetchone()[0]
+
+    # By type
+    cursor.execute("SELECT vehicle_type, COUNT(*) as cnt FROM crossings GROUP BY vehicle_type")
+    by_type = {row[0]: row[1] for row in cursor.fetchall()}
+
+    # By direction
+    cursor.execute("SELECT direction, COUNT(*) as cnt FROM crossings WHERE direction IS NOT NULL GROUP BY direction")
+    by_direction = {row[0]: row[1] for row in cursor.fetchall()}
+
+    return {
+        'total_crossings': total,
+        'unique_plates': unique,
+        'by_vehicle_type': by_type,
+        'by_direction': by_direction
+    }
+
+
+def get_recent_plates_db(db_path, limit=10):
+    """Get recent plates."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT vehicle_type, license_plate, timestamp, direction
+        FROM crossings
+        WHERE license_plate IS NOT NULL AND license_plate != ''
+        ORDER BY timestamp DESC LIMIT ?
+    """, (limit,))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def export_csv_db(db_path, output_path, start_time=None, end_time=None):
+    """Export to CSV."""
+    records = get_crossings_db(db_path, start_time, end_time, limit=100000)
+    if not records:
+        return 0
+
+    with open(output_path, 'w', newline='') as f:
+        if records:
+            f.write(','.join(records[0].keys()) + '\n')
+            for r in records:
+                f.write(','.join(str(v) for v in r.values()) + '\n')
+    return len(records)
+
+
+# ============ Dashboard Functions ============
+
+def get_vehicle_type_icon(vehicle_type: str) -> str:
+    """Get emoji icon for vehicle type."""
+    icons = {'car': '🚗', 'truck': '🚚', 'bus': '🚌', 'motorbike': '🏍️'}
+    return icons.get(vehicle_type.lower(), '🚙')
+
+
+def ensure_database(db_path):
+    """Ensure database exists with schema."""
+    if not os.path.exists(db_path):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS crossings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicle_type TEXT NOT NULL,
+                license_plate TEXT,
+                timestamp TEXT NOT NULL,
+                frame_idx INTEGER,
+                direction TEXT,
+                track_id INTEGER,
+                confidence REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        conn.close()
 
 
 def get_stats() -> Dict[str, Any]:
     """Get statistics from database."""
-    # Use default path if not in streamlit
     try:
         db_path = st.session_state.get('db_path', DB_PATH)
     except:
         db_path = DB_PATH
-    import sys
-    import os
-    # Add parent directory to path
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(app_dir)
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    from traffic_database import TrafficDatabase
-    db = TrafficDatabase(db_path)
-    stats = db.get_stats()
-    stats['recent_plates'] = db.get_recent_plates(10)
+
+    ensure_database(db_path)
+
+    stats = get_stats_db(db_path)
+    stats['recent_plates'] = get_recent_plates_db(db_path, 10)
     return stats
 
 
-def get_vehicle_type_icon(vehicle_type: str) -> str:
-    """Get emoji icon for vehicle type."""
-    icons = {
-        'car': '🚗',
-        'truck': '🚚',
-        'bus': '🚌',
-        'motorbike': '🏍️'
-    }
-    return icons.get(vehicle_type.lower(), '🚙')
+def get_crossings(start_time=None, end_time=None, vehicle_type=None, license_plate=None, limit=100):
+    """Get crossing records."""
+    try:
+        db_path = st.session_state.get('db_path', DB_PATH)
+    except:
+        db_path = DB_PATH
+
+    if not os.path.exists(db_path):
+        return []
+
+    return get_crossings_db(db_path, start_time, end_time, vehicle_type, license_plate, limit)
 
 
 def main():
@@ -88,26 +193,17 @@ def main():
 
     # Sidebar
     st.sidebar.title("Settings")
-
-    # Database path
     db_path = st.sidebar.text_input("Database Path", DB_PATH)
     st.session_state.db_path = db_path
 
-    # Refresh interval
-    refresh = st.sidebar.slider("Auto-refresh (seconds)", 1, 60, 5)
+    refresh = st.sidebar.slider("Refresh interval (seconds)", 1, 60, 5)
     st.session_state.refresh_interval = refresh
-
-    # Auto-refresh (use Streamlit components if available)
     if refresh > 0:
         st.sidebar.markdown(f"🔄 Auto-refresh every {refresh}s")
-        try:
-            st.autorefresh(refresh * 1000)
-        except AttributeError:
-            st.sidebar.warning("Enable browser auto-refresh for live updates")
 
-    # ============== MAIN CONTENT ==============
+    st.markdown("---")
 
-    # Statistics section
+    # Load stats
     try:
         stats = get_stats()
     except Exception as e:
@@ -116,28 +212,21 @@ def main():
 
     # Metrics row
     col1, col2, col3, col4 = st.columns(4)
-
     with col1:
         st.metric("Total Crossings", stats.get('total_crossings', 0))
-
     with col2:
         st.metric("Unique Plates", stats.get('unique_plates', 0))
-
     with col3:
         cars = stats.get('by_vehicle_type', {}).get('car', 0)
         st.metric("Cars", cars)
-
     with col4:
         others = sum(stats.get('by_vehicle_type', {}).values()) - cars
         st.metric("Other Vehicles", others)
 
     st.markdown("---")
 
-    # ============== LIVE COUNTS ==============
-
+    # Live counts
     st.header("📊 Live Vehicle Counts")
-
-    # Vehicle type breakdown
     by_type = stats.get('by_vehicle_type', {})
 
     if by_type:
@@ -149,20 +238,15 @@ def main():
     else:
         st.info("No vehicles detected yet. Process a video to see counts.")
 
-    # ============== VEHICLE TYPE CHART ==============
-
+    # Charts
     if by_type:
         st.subheader("Vehicle Type Distribution")
-
-        # Bar chart
         chart_data = pd.DataFrame({
             'Vehicle Type': [v.title() for v in by_type.keys()],
             'Count': list(by_type.values())
         }).set_index('Vehicle Type')
-
         st.bar_chart(chart_data['Count'])
 
-    # Direction breakdown
     by_direction = stats.get('by_direction', {})
     if by_direction:
         st.subheader("Traffic Direction")
@@ -174,194 +258,78 @@ def main():
 
     st.markdown("---")
 
-    # ============== LICENSE PLATE LOGS ==============
-
+    # Plate logs
     st.header("📋 License Plate Logs")
-
-    # Recent plates table
     recent_plates = stats.get('recent_plates', [])
 
     if recent_plates:
-        # Create DataFrame
         df = pd.DataFrame(recent_plates)
         df['icon'] = df['vehicle_type'].apply(get_vehicle_type_icon)
-
-        # Display
-        st.dataframe(
-            df[['icon', 'vehicle_type', 'license_plate', 'timestamp', 'direction']],
-            hide_index=True
-        )
-
-        # Plate details
-        with st.expander("View All Plate Details"):
-            st.table(df)
+        st.dataframe(df[['icon', 'vehicle_type', 'license_plate', 'timestamp', 'direction']])
     else:
-        st.info("No license plates recorded. Process video with ANPR pipeline.")
-
-    # ============== SEARCH PLATES ==============
-
-    st.subheader("🔍 Search Plates")
-
-    search_col1, search_col2 = st.columns(2)
-    with search_col1:
-        plate_search = st.text_input("Search by plate number", "")
-    with search_col2:
-        vehicle_filter = st.selectbox("Filter by vehicle type",
-                                    ["All"] + list(by_type.keys()))
-
-    if plate_search or vehicle_filter != "All":
-        try:
-            db = load_database()
-            filter_type = None if vehicle_filter == "All" else vehicle_filter
-            results = db.get_crossings(license_plate=plate_search if plate_search else None,
-                                     vehicle_type=filter_type,
-                                     limit=50)
-            if results:
-                st.dataframe(pd.DataFrame(results))
-            else:
-                st.info("No matching records found.")
-        except Exception as e:
-            st.error(f"Search error: {e}")
+        st.info("No license plates recorded yet.")
 
     st.markdown("---")
 
-    # ============== TRAFFIC ANALYTICS ==============
-
+    # Analytics
     st.header("📈 Traffic Analytics")
-
-    # Time-based analysis
-    try:
-        db = load_database()
-        all_crossings = db.get_crossings(limit=1000)
-    except:
-        all_crossings = []
+    all_crossings = get_crossings(limit=1000)
 
     if all_crossings:
-        # Convert to DataFrame
         df = pd.DataFrame(all_crossings)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-        # Time grouping
-        df['hour'] = df['timestamp'].dt.hour
-        df['date'] = df['timestamp'].dt.date
-
-        # Hourly distribution
         st.subheader("Hourly Traffic")
-
+        df['hour'] = df['timestamp'].dt.hour
         hourly = df.groupby('hour').size()
         st.line_chart(hourly)
 
-        # Daily distribution (if multiple days)
-        if df['date'].nunique() > 1:
-            st.subheader("Daily Traffic")
-
-            daily = df.groupby('date').size()
-            st.bar_chart(daily)
-
-        # Vehicle type over time
         st.subheader("Vehicle Type Timeline")
-
         for vtype in df['vehicle_type'].unique():
             vtype_data = df[df['vehicle_type'] == vtype]
             vtype_counts = vtype_data.groupby('hour').size()
             st.text(f"{get_vehicle_type_icon(vtype)} {vtype.title()}")
     else:
-        st.info("No data for analytics. Process more videos.")
+        st.info("No data for analytics.")
 
     st.markdown("---")
 
-    # ============== HISTORICAL REPORTS ==============
-
+    # Historical reports
     st.header("📑 Historical Reports")
-
-    # Date range selector
     date_col1, date_col2 = st.columns(2)
     with date_col1:
         start_date = st.date_input("Start Date", datetime.now().date() - timedelta(days=7))
     with date_col2:
         end_date = st.date_input("End Date", datetime.now().date())
 
-    # Get data for date range
-    try:
-        db = load_database()
-        start_ts = datetime.combine(start_date, datetime.min.time()).isoformat()
-        end_ts = datetime.combine(end_date, datetime.max.time()).isoformat()
-
-        records = db.get_crossings(start_time=start_ts, end_time=end_ts, limit=10000)
-    except:
-        records = []
-
-    # Summary for date range
-    st.subheader(f"Report: {start_date} to {end_date}")
-
-    if records:
-        df_range = pd.DataFrame(records)
-        df_range['timestamp'] = pd.to_datetime(df_range['timestamp'])
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("Total Crossings", len(records))
-
-        with col2:
-            st.metric("Unique Plates", df_range['license_plate'].nunique())
-
-        with col3:
-            st.metric("Peak Hour", df_range['timestamp'].dt.hour.mode()[0] if not df_range.empty else "-")
-
-        # Breakdown
-        breakdown = df_range['vehicle_type'].value_counts()
-        st.bar_chart(breakdown)
-
-        # Export button
-        if st.button("📥 Export to CSV"):
-            try:
-                db = load_database()
-                output_path = f"database/export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                count = db.export_csv(output_path, start_ts, end_ts)
-                st.success(f"Exported {count} records to {output_path}")
-            except Exception as e:
-                st.error(f"Export error: {e}")
-
-    else:
-        st.info("No records for selected date range.")
+    if st.button("📥 Export to CSV"):
+        try:
+            output_path = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            start_ts = datetime.combine(start_date, datetime.min.time()).isoformat()
+            end_ts = datetime.combine(end_date, datetime.max.time()).isoformat()
+            count = export_csv_db(st.session_state.db_path, output_path, start_ts, end_ts)
+            st.success(f"Exported {count} records to {output_path}")
+        except Exception as e:
+            st.error(f"Export error: {e}")
 
     st.markdown("---")
 
-    # ============== CAPTURED IMAGES ==============
-
+    # Captured images
     st.header("📷 Captured Plates")
-
     if os.path.exists(CAPTURED_DIR):
         images = [f for f in os.listdir(CAPTURED_DIR) if f.endswith('.jpg')]
-
         if images:
-            # Select image
-            selected_image = st.selectbox("Select captured plate", images)
-
-            if selected_image:
-                image_path = os.path.join(CAPTURED_DIR, selected_image)
-                st.image(image_path, caption=selected_image)
-
-                # Get metadata
-                parts = selected_image.replace('.jpg', '').split('_')
-                if len(parts) >= 3:
-                    track_id = parts[1]
-                    frame_idx = parts[2]
-                    st.text(f"Track ID: {track_id}, Frame: {frame_idx}")
+            selected = st.selectbox("Select", images)
+            if selected:
+                st.image(os.path.join(CAPTURED_DIR, selected))
         else:
             st.info("No plates captured yet.")
     else:
-        st.info("Captured plates directory not found.")
+        st.info("No captured plates directory found.")
 
     st.markdown("---")
-
-    # Footer
-    st.markdown("---")
-st.markdown("🚗 Smart Traffic ANPR System | Powered by YOLOv8 + EasyOCR")
+    st.markdown("🚗 Smart Traffic ANPR System | Powered by YOLOv8 + EasyOCR")
 
 
 if __name__ == "__main__":
-    # Note: Auto-refresh is handled in the sidebar settings
-    # Use browser refresh or Streamlit's native rerun feature
     main()
