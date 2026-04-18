@@ -73,7 +73,8 @@ python traffic_database.py --query      # Query recent crossings
 python traffic_database.py --stats   # Show statistics
 python traffic_database.py --export database/crossings.csv  # Export to CSV
 
-# Run Streamlit dashboard
+# Run Streamlit dashboard (Dashboard is running on port 8501)
+streamlit run app/streamlit_app.py
 streamlit run app/streamlit_app.py
 
 # Run FastAPI server (if implemented)
