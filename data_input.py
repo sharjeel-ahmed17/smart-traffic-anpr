@@ -138,17 +138,112 @@ def list_videos(directory: str = "data/videos") -> list:
     return sorted(videos)
 
 
-if __name__ == "__main__":
-    videos = list_videos()
+def extract_frames_batch(
+    video_dir: str = "data/videos",
+    output_base_dir: str = "data/images",
+    frame_interval: int = 30
+) -> Dict[str, list]:
+    """
+    Extract frames from all videos in a directory.
 
-    if not videos:
-        print("No videos found in data/videos/")
+    Args:
+        video_dir: Directory containing video files
+        output_base_dir: Base directory for output frames
+        frame_interval: Extract every Nth frame
+
+    Returns:
+        Dictionary mapping video names to lists of saved frame paths
+    """
+    videos = list_videos(video_dir)
+    results = {}
+
+    for video_path in videos:
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        output_dir = os.path.join(output_base_dir, video_name)
+        saved_frames = extract_frames(video_path, output_dir, frame_interval)
+        results[video_name] = saved_frames
+
+    return results
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="ANPR Data Input - Load CCTV footage and extract frames"
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # List command
+    list_parser = subparsers.add_parser("list", help="List available videos")
+    list_parser.add_argument(
+        "--dir", default="data/videos", help="Directory to search for videos"
+    )
+
+    # Info command
+    info_parser = subparsers.add_parser("info", help="Get video metadata")
+    info_parser.add_argument("video", help="Path to video file")
+
+    # Extract command
+    extract_parser = subparsers.add_parser("extract", help="Extract frames from video")
+    extract_parser.add_argument("video", nargs="?", help="Path to video file (optional)")
+    extract_parser.add_argument(
+        "--all", action="store_true", help="Extract frames from all videos in data/videos/"
+    )
+    extract_parser.add_argument(
+        "--output", "-o", default="data/images", help="Output directory for frames"
+    )
+    extract_parser.add_argument(
+        "--interval", "-i", type=int, default=30, help="Extract every Nth frame (default: 30)"
+    )
+    extract_parser.add_argument(
+        "--start", type=int, default=0, help="Starting frame index"
+    )
+    extract_parser.add_argument(
+        "--end", type=int, help="Ending frame index"
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "list":
+        videos = list_videos(args.dir)
+        if not videos:
+            print(f"No videos found in {args.dir}/")
+        else:
+            print(f"Found {len(videos)} video(s):")
+            for video in videos:
+                print(f"  - {video}")
+
+    elif args.command == "info":
+        info = get_video_info(args.video)
+        print(f"Video: {args.video}")
+        print(f"  Resolution: {info['width']}x{info['height']}")
+        print(f"  FPS: {info['fps']}")
+        print(f"  Duration: {info['duration_seconds']}s ({info['duration_seconds']/60:.2f} min)")
+        print(f"  Total frames: {info['total_frames']}")
+
+    elif args.command == "extract":
+        if args.all:
+            print("Extracting frames from all videos...")
+            results = extract_frames_batch("data/videos", args.output, args.interval)
+            for video_name, frames in results.items():
+                print(f"  {video_name}: {len(frames)} frames extracted")
+        elif args.video:
+            extract_frames(
+                args.video,
+                args.output,
+                args.interval,
+                args.start,
+                args.end
+            )
+        else:
+            print("Error: Specify a video file or use --all flag")
+            parser.print_help()
+
     else:
-        print(f"Found {len(videos)} video(s):")
-        for video in videos:
-            print(f"\n  - {video}")
-            info = get_video_info(video)
-            print(f"    Resolution: {info['width']}x{info['height']}")
-            print(f"    FPS: {info['fps']}")
-            print(f"    Duration: {info['duration_seconds']}s")
-            print(f"    Total frames: {info['total_frames']}")
+        parser.print_help()
+        print("\nExamples:")
+        print("  python data_input.py list")
+        print("  python data_input.py info data/videos/traffic1.mp4")
+        print("  python data_input.py extract data/videos/traffic1.mp4")
+        print("  python data_input.py extract --all --interval 60")
