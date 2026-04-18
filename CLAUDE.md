@@ -59,6 +59,12 @@ python line_crossing.py data/videos/traffic1.mp4 --p1 384 0 --p2 384 432
 # Horizontal line crossing at y=216
 python line_crossing.py data/videos/traffic1.mp4 --p1 0 216 --p2 768 216 --dir both
 
+# Full ANPR pipeline with plate capture on crossing
+python anpr_pipeline.py data/videos/traffic1.mp4 --p1 384 0 --p2 384 432
+
+# Standalone plate detection
+python plate_detector.py data/images/traffic1/traffic1_frame_0000.jpg
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
