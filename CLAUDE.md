@@ -29,6 +29,18 @@ Video Input → Frame Extraction (OpenCV) → YOLOv8 Detection → DeepSORT/Byte
 # Install dependencies
 pip install -r requirements.txt
 
+# List available videos
+python data_input.py list
+
+# Get video metadata
+python data_input.py info data/videos/traffic1.mp4
+
+# Extract frames from a video
+python data_input.py extract data/videos/traffic1.mp4
+
+# Extract frames from all videos (every Nth frame)
+python data_input.py extract --all --interval 30
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
