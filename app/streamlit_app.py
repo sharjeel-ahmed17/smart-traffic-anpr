@@ -178,7 +178,6 @@ def main():
         # Display
         st.dataframe(
             df[['icon', 'vehicle_type', 'license_plate', 'timestamp', 'direction']],
-            use_container_width=True,
             hide_index=True
         )
 
@@ -207,7 +206,7 @@ def main():
                                      vehicle_type=filter_type,
                                      limit=50)
             if results:
-                st.dataframe(pd.DataFrame(results), use_container_width=True)
+                st.dataframe(pd.DataFrame(results))
             else:
                 st.info("No matching records found.")
         except Exception as e:
@@ -331,7 +330,7 @@ def main():
 
             if selected_image:
                 image_path = os.path.join(CAPTURED_DIR, selected_image)
-                st.image(image_path, caption=selected_image, use_container_width=True)
+                st.image(image_path, caption=selected_image)
 
                 # Get metadata
                 parts = selected_image.replace('.jpg', '').split('_')
@@ -347,7 +346,8 @@ def main():
     st.markdown("---")
 
     # Footer
-    st.footer("🚗 Smart Traffic ANPR System | Powered by YOLOv8 + EasyOCR")
+    st.markdown("---")
+st.markdown("🚗 Smart Traffic ANPR System | Powered by YOLOv8 + EasyOCR")
 
 
 if __name__ == "__main__":
