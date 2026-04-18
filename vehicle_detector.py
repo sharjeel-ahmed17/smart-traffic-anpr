@@ -2,14 +2,18 @@ import cv2
 import numpy as np
 import torch
 from typing import List, Dict, Any, Optional
-from ultralytics import YOLO
+from functools import partial
 
-# Fix for PyTorch 2.6+ weights_only default
-torch.serialization.add_safe_globals([
-    torch.nn.modules.conv.Conv2d,
-    torch.nn.modules.batchnorm.BatchNorm2d,
-    torch.nn.modules.activation.SiLU,
-])
+# Patch torch.load to use weights_only=False for PyTorch 2.6+ compatibility
+original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return original_torch_load(*args, **kwargs)
+
+torch.load = patched_torch_load
+
+from ultralytics import YOLO
 
 
 # COCO class IDs for vehicle types

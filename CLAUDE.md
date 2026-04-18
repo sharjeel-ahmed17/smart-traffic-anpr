@@ -41,6 +41,12 @@ python data_input.py extract data/videos/traffic1.mp4
 # Extract frames from all videos (every Nth frame)
 python data_input.py extract --all --interval 30
 
+# Detect vehicles in a single image
+python vehicle_detector.py data/images/traffic1/traffic1_frame_0000.jpg
+
+# Detect vehicles in a directory of images
+python vehicle_detector.py --dir data/images/traffic1
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
