@@ -47,6 +47,18 @@ python vehicle_detector.py data/images/traffic1/traffic1_frame_0000.jpg
 # Detect vehicles in a directory of images
 python vehicle_detector.py --dir data/images/traffic1
 
+# Track vehicles in video with unique IDs
+python vehicle_tracker.py data/videos/traffic1.mp4 --interval 30
+
+# Track with video output
+python vehicle_tracker.py data/videos/traffic1.mp4 -o output/tracked.mp4 --interval 30
+
+# Detect line crossings (vertical line in center)
+python line_crossing.py data/videos/traffic1.mp4 --p1 384 0 --p2 384 432
+
+# Horizontal line crossing at y=216
+python line_crossing.py data/videos/traffic1.mp4 --p1 0 216 --p2 768 216 --dir both
+
 # Run Streamlit dashboard
 streamlit run app/streamlit_app.py
 
