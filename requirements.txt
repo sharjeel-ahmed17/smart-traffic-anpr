@@ -1,0 +1,31 @@
+# Core
+python-dotenv==1.0.1
+numpy==1.26.4
+
+# Computer Vision
+opencv-python==4.9.0.80
+Pillow==10.3.0
+
+# YOLOv8 (Ultralytics)
+ultralytics==8.2.0
+
+# DeepSORT dependencies
+scipy==1.13.0
+filterpy==1.4.5
+scikit-learn==1.4.2
+
+# EasyOCR
+easyocr==1.7.1
+torch>=2.2.0
+torchvision>=0.17.0
+
+# API
+fastapi==0.111.0
+uvicorn[standard]==0.30.0
+
+# Frontend Dashboard
+streamlit==1.35.0
+
+# Utilities
+pandas==2.2.2
+matplotlib==3.9.0
